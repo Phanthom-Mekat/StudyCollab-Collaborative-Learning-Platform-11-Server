@@ -43,7 +43,7 @@ async function run() {
 
     const assignmentCollection = client.db("GroupStudy").collection("assignment");
     const userCollection = client.db("GroupStudy").collection('users')
-
+    const assignmentSubmissionCollection = client.db("GroupStudy").collection('assignmentSubmission')
 
     // create a new assignment
     app.post("/create", async (req, res) => {
@@ -100,6 +100,20 @@ async function run() {
     })
 
 
+
+    // take assighnment by user
+
+    app.post('/submitAssignment',async(req,res)=>{
+      const assignment = req.body;
+      const result = await assignmentSubmissionCollection.insertOne(assignment);
+      res.json(result);
+    })
+
+    app.get('/submitAssignment',async(req,res)=>{
+      const cursor = assignmentSubmissionCollection.find({});
+      const result = await cursor.toArray();
+      res.json(result);
+    })
 
 
 
