@@ -42,6 +42,8 @@ async function run() {
     // Send a ping to confirm a successful connection
 
     const assignmentCollection = client.db("GroupStudy").collection("assignment");
+    const userCollection = client.db("GroupStudy").collection('users')
+
 
     // create a new assignment
     app.post("/create", async (req, res) => {
@@ -57,6 +59,37 @@ async function run() {
       res.json(result);
     });
     
+
+
+
+
+
+
+    // users collection 
+      // users data 
+      app.get('/users',async(req,res)=>{
+        const result = await userCollection.find().toArray();
+        res.send(result)
+    })
+
+    app.get('/users/:id',async(req,res)=>{
+        const id = req.params.id;
+        const query = {_id:new ObjectId(id)}
+        const result = await userCollection.findOne(query);
+        res.send(result)
+    })
+
+    app.post('/users',async(req,res)=>{
+        const user = req.body;
+        // console.log(user)
+        const result = await userCollection.insertOne(user);
+        res.send(result)
+    })
+
+
+
+
+
 
 
 
