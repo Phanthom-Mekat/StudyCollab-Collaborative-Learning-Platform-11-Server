@@ -41,6 +41,21 @@ async function run() {
     // await client.connect();
     // Send a ping to confirm a successful connection
 
+    const assignmentCollection = client.db("GroupStudy").collection("assignment");
+
+    // create a new assignment
+    app.post("/create", async (req, res) => {
+      const assignment = req.body;
+      const result = await assignmentCollection.insertOne(assignment);
+      res.json(result);
+    });
+    
+    // get all assignments
+    app.get("/create", async (req, res) => {
+      const cursor = assignmentCollection.find({});
+      const result = await cursor.toArray();
+      res.json(result);
+    });
     
 
 
