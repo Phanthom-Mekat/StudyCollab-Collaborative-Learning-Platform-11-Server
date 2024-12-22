@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 require("dotenv").config();
@@ -59,8 +59,21 @@ async function run() {
       res.json(result);
     });
     
+    // get a single assignment
+    app.get("/create/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await assignmentCollection.findOne(query);
+      res.json(result);
+    });
 
-
+    //delete an assignment who created 
+    app.delete('/create/:id',async(req,res)=>{
+      const id = req.params.id;
+      const query = {_id:new ObjectId(id)}
+      const result = await assignmentCollection.deleteOne(query);
+      res.json(result)
+    })
 
 
 
