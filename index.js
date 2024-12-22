@@ -66,6 +66,24 @@ async function run() {
       const result = await assignmentCollection.findOne(query);
       res.json(result);
     });
+    
+    app.put("/create/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          title: req.body.title,
+          description: req.body.description,
+          marks: parseInt(req.body.marks),
+          thumbnailUrl: req.body.thumbnailUrl,
+          difficultyLevel: req.body.difficultyLevel,
+          dueDate: req.body.dueDate,
+        },
+      };
+      const result = await assignmentCollection.updateOne(query, updateDoc);
+      res.json(result);
+    });
+
 
     //delete an assignment who created 
     app.delete('/create/:id',async(req,res)=>{
