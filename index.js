@@ -132,8 +132,14 @@ async function run() {
       const result = await cursor.toArray();
       res.json(result);
     })
+    // get all assignments submitted by a user
+    app.get('/submitAssignment/:email',async(req,res)=>{
+      const email = req.params.email;
+      const query = {userEmail:email}
+      const result = await assignmentSubmissionCollection.find(query).toArray();
+      res.json(result);
+    })
 
-   
     app.put('/submitAssignment/:id',async(req,res)=>{
       const id = req.params.id;
       const query = {_id:new ObjectId(id)}
@@ -141,7 +147,9 @@ async function run() {
         $set:{
           status:req.body.status,
           examinerEmail:req.body.examinerEmail,
-          examinerName:req.body.examinerName
+          examinerName:req.body.examinerName,
+          obtainedMarks:req.body.obtainedMarks,
+          feedback:req.body.feedback
         }
       }
       const result = await assignmentSubmissionCollection.updateOne(query,updateDoc);
