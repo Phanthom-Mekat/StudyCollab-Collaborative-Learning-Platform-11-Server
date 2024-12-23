@@ -133,7 +133,20 @@ async function run() {
       res.json(result);
     })
 
-
+   
+    app.put('/submitAssignment/:id',async(req,res)=>{
+      const id = req.params.id;
+      const query = {_id:new ObjectId(id)}
+      const updateDoc = {
+        $set:{
+          status:req.body.status,
+          examinerEmail:req.body.examinerEmail,
+          examinerName:req.body.examinerName
+        }
+      }
+      const result = await assignmentSubmissionCollection.updateOne(query,updateDoc);
+      res.json(result)
+    })
 
 
 
