@@ -15,11 +15,36 @@ app.use(
   cors({
     origin: ["http://localhost:5173"], //replace with client address
     credentials: true,
+    optionsSuccessStatus: 200,
   })
 );
 
 // cookie parser middleware
 app.use(cookieParser());
+
+
+// custom middleware
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.token;
+  // console.log('token inside the verifyToken', token);
+
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+
+  //verify the token
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res
+        .status(401)
+        .send({ message: "Token verification failed: " + err.message });
+    }
+    // if there is no error,
+    req.user = decoded;
+    next();
+  });
+};
+
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.zhb6u.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -46,8 +71,34 @@ async function run() {
       .db("GroupStudy")
       .collection("assignmentSubmission");
 
+    // auth related apis
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      //create token
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ success: true });
+    });
+    // removing/clearing the JWT token after the user logs out
+    app.post("/logout", (req, res) => {
+      res
+        .clearCookie("token", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ success: true });
+    });
+
     // create a new assignment
-    app.post("/create", async (req, res) => {
+    app.post("/create",verifyToken, async (req, res) => {
       const assignment = req.body;
       const result = await assignmentCollection.insertOne(assignment);
       res.json(result);
@@ -68,7 +119,7 @@ async function run() {
       res.json(result);
     });
 
-    app.put("/create/:id", async (req, res) => {
+    app.put("/create/:id",verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const updateDoc = {
@@ -102,31 +153,32 @@ async function run() {
     app.get("/create/difficulty/:difficultyLevel", async (req, res) => {
       const { difficultyLevel } = req.params;
       const query = {};
-    
+
       if (difficultyLevel !== "all") {
         query.difficultyLevel = difficultyLevel;
       }
-    
-      const result = await assignmentCollection.find(query).toArray();
-      res.json(result);
-    });
-
-    app.get("/create/search/difficulty/:difficultyLevel/:search", async (req, res) => {
-      const search = req.params.search;
-      const difficultyLevel = req.params.difficultyLevel;
-      const query = {
-        $or: [
-          { title: { $regex: search, $options: "i" } },
-          { description: { $regex: search, $options: "i" } },
-        ],
-        difficultyLevel,
-      };
 
       const result = await assignmentCollection.find(query).toArray();
       res.json(result);
     });
 
+    app.get(
+      "/create/search/difficulty/:difficultyLevel/:search",
+      async (req, res) => {
+        const search = req.params.search;
+        const difficultyLevel = req.params.difficultyLevel;
+        const query = {
+          $or: [
+            { title: { $regex: search, $options: "i" } },
+            { description: { $regex: search, $options: "i" } },
+          ],
+          difficultyLevel,
+        };
 
+        const result = await assignmentCollection.find(query).toArray();
+        res.json(result);
+      }
+    );
 
     //delete an assignment who created
     app.delete("/create/:id", async (req, res) => {
@@ -159,26 +211,33 @@ async function run() {
 
     // take assighnment by user
 
-    app.post("/submitAssignment", async (req, res) => {
+    app.post("/submitAssignment",verifyToken, async (req, res) => {
       const assignment = req.body;
       const result = await assignmentSubmissionCollection.insertOne(assignment);
       res.json(result);
     });
 
-    app.get("/submitAssignment", async (req, res) => {
+    app.get("/submitAssignment",verifyToken, async (req, res) => {
       const cursor = assignmentSubmissionCollection.find({});
       const result = await cursor.toArray();
+      // console.log("Fetched assignments:", result);
       res.json(result);
     });
     // get all assignments submitted by a user
-    app.get("/submitAssignment/:email", async (req, res) => {
+    app.get("/submitAssignment/:email",verifyToken, async (req, res) => {
       const email = req.params.email;
       const query = { userEmail: email };
+      // console.log(req.cookies);
+      // console.log(req.user.email, req.params.email);
+      if (req.user.email !== req.params.email) {
+        return res.status(403).send({ message: 'forbidden access' });
+    }
+    
       const result = await assignmentSubmissionCollection.find(query).toArray();
       res.json(result);
     });
 
-    app.put("/submitAssignment/:id", async (req, res) => {
+    app.put("/submitAssignment/:id",verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const updateDoc = {
