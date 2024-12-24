@@ -13,7 +13,7 @@ const port = process.env.PORT || 5000;
 app.use(express.json());
 app.use(
   cors({
-    origin: ["http://localhost:5173"], //replace with client address
+    origin: ["http://localhost:5173", "https://studycolab.netlify.app"], //replace with client address
     credentials: true,
     optionsSuccessStatus: 200,
   })
