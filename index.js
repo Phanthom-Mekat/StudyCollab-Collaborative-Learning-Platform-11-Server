@@ -22,7 +22,6 @@ app.use(
 // cookie parser middleware
 app.use(cookieParser());
 
-
 // custom middleware
 const verifyToken = (req, res, next) => {
   const token = req.cookies?.token;
@@ -44,7 +43,6 @@ const verifyToken = (req, res, next) => {
     next();
   });
 };
-
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.zhb6u.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -98,7 +96,7 @@ async function run() {
     });
 
     // create a new assignment
-    app.post("/create",verifyToken, async (req, res) => {
+    app.post("/create", verifyToken, async (req, res) => {
       const assignment = req.body;
       const result = await assignmentCollection.insertOne(assignment);
       res.json(result);
@@ -119,7 +117,7 @@ async function run() {
       res.json(result);
     });
 
-    app.put("/create/:id",verifyToken, async (req, res) => {
+    app.put("/create/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const updateDoc = {
@@ -211,33 +209,118 @@ async function run() {
 
     // take assighnment by user
 
-    app.post("/submitAssignment",verifyToken, async (req, res) => {
+    app.post("/submitAssignment", verifyToken, async (req, res) => {
       const assignment = req.body;
       const result = await assignmentSubmissionCollection.insertOne(assignment);
       res.json(result);
     });
 
-    app.get("/submitAssignment",verifyToken, async (req, res) => {
+    app.get("/submitAssignment", verifyToken, async (req, res) => {
       const cursor = assignmentSubmissionCollection.find({});
       const result = await cursor.toArray();
       // console.log("Fetched assignments:", result);
       res.json(result);
     });
     // get all assignments submitted by a user
-    app.get("/submitAssignment/:email",verifyToken, async (req, res) => {
+    app.get("/submitAssignment/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       const query = { userEmail: email };
       // console.log(req.cookies);
       // console.log(req.user.email, req.params.email);
       if (req.user.email !== req.params.email) {
-        return res.status(403).send({ message: 'forbidden access' });
-    }
-    
+        return res.status(403).send({ message: "forbidden access" });
+      }
+
       const result = await assignmentSubmissionCollection.find(query).toArray();
       res.json(result);
     });
 
-    app.put("/submitAssignment/:id",verifyToken, async (req, res) => {
+    // app.put("/submitAssignment/:id", verifyToken, async (req, res) => {
+    //   const id = req.params.id;
+    //   const query = { _id: new ObjectId(id) };
+    //   const updateDoc = {
+    //     $set: {
+    //       status: req.body.status,
+    //       examinerEmail: req.body.examinerEmail,
+    //       examinerName: req.body.examinerName,
+    //       obtainedMarks: req.body.obtainedMarks,
+    //       feedback: req.body.feedback,
+    //     },
+    //   };
+    //   const result = await assignmentSubmissionCollection.updateOne(
+    //     query,
+    //     updateDoc
+    //   );
+    //   res.json(result);
+    // });
+
+    // Add new collections
+    const achievementsCollection = client
+      .db("GroupStudy")
+      .collection("achievements");
+    const userStatsCollection = client.db("GroupStudy").collection("userStats");
+
+    // Point system constants
+    const POINTS = {
+      SUBMIT_ASSIGNMENT: 10,
+      GRADE_ASSIGNMENT: 5,
+      PERFECT_SCORE: 15,
+      STREAK_BONUS: 20,
+      MONTHLY_TOP_THREE: [50, 30, 20], // Points for monthly leaderboard positions
+    };
+
+    // Achievement definitions
+    const ACHIEVEMENTS = {
+      FIRST_SUBMISSION: {
+        id: "first_submission",
+        name: "First Steps",
+        description: "Submit your first assignment",
+        points: 50,
+        icon: "🎯",
+      },
+      PERFECT_STREAK: {
+        id: "perfect_streak",
+        name: "Perfect Week",
+        description: "Maintain a 7-day submission streak",
+        points: 100,
+        icon: "🔥",
+      },
+      GRADING_MASTER: {
+        id: "grading_master",
+        name: "Grading Master",
+        description: "Grade 10 assignments",
+        points: 75,
+        icon: "📝",
+      },
+      TOP_PERFORMER: {
+        id: "top_performer",
+        name: "Top Performer",
+        description: "Achieve #1 in monthly leaderboard",
+        points: 200,
+        icon: "👑",
+      },
+    };
+
+    // Initialize user stats
+    app.post("/userStats", verifyToken, async (req, res) => {
+      const stats = {
+        userEmail: req.body.email,
+        points: 0,
+        assignmentsCompleted: 0,
+        assignmentsGraded: 0,
+        perfectScores: 0,
+        currentStreak: 0,
+        lastActivityDate: new Date(),
+        achievements: [],
+        rank: "Novice",
+      };
+      const result = await userStatsCollection.insertOne(stats);
+      res.json(result);
+    });
+
+    // Update points and check achievements after submission
+    // Update points and check achievements after submission
+    app.put("/submitAssignment/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const updateDoc = {
@@ -249,10 +332,329 @@ async function run() {
           feedback: req.body.feedback,
         },
       };
-      const result = await assignmentSubmissionCollection.updateOne(
+
+      // 1. First update the assignment submission
+      const submissionResult = await assignmentSubmissionCollection.updateOne(
         query,
         updateDoc
       );
+
+      // 2. Get the submission to access student's email
+      const submission = await assignmentSubmissionCollection.findOne(query);
+
+      // 3. Update Student's Stats
+      const studentEmail = submission.userEmail;
+      let studentStats = await userStatsCollection.findOne({
+        userEmail: studentEmail,
+      });
+
+      // Create student stats if they don't exist
+      if (!studentStats) {
+        studentStats = {
+          userEmail: studentEmail,
+          userName: submission.userName,
+          points: 0,
+          assignmentsCompleted: 0,
+          assignmentsGraded: 0,
+          perfectScores: 0,
+          currentStreak: 0,
+          lastActivityDate: new Date(),
+          achievements: [],
+          monthlyPoints: 0,
+          rank: "Novice",
+        };
+        await userStatsCollection.insertOne(studentStats);
+      }
+
+      // Calculate student points
+      let studentPointsEarned = POINTS.SUBMIT_ASSIGNMENT;
+      let studentNewAchievements = [];
+
+      // Check for perfect score
+      if (parseInt(req.body.obtainedMarks) === parseInt(submission.marks)) {
+        studentPointsEarned += POINTS.PERFECT_SCORE;
+        studentStats.perfectScores++;
+
+        if (studentStats.perfectScores === 5) {
+          studentNewAchievements.push(ACHIEVEMENTS.PERFECT_SCORER);
+        }
+      }
+
+      // Check for first submission achievement
+      if (studentStats.assignmentsCompleted === 0) {
+        studentNewAchievements.push(ACHIEVEMENTS.FIRST_SUBMISSION);
+      }
+
+      // Update student streak
+      const studentStreak = await updateStreak(studentEmail);
+      if (studentStreak?.newAchievements?.length > 0) {
+        studentNewAchievements.push(...studentStreak.newAchievements);
+        studentPointsEarned += studentStreak.bonusPoints;
+      }
+
+      // Update student stats
+      await userStatsCollection.updateOne(
+        { userEmail: studentEmail },
+        {
+          $inc: {
+            points: studentPointsEarned,
+            monthlyPoints: studentPointsEarned,
+            assignmentsCompleted: 1,
+            perfectScores:
+              studentStats.perfectScores > studentStats.perfectScores ? 1 : 0,
+          },
+          $set: {
+            lastActivityDate: new Date(),
+            currentStreak:
+              studentStreak?.newStreak || studentStats.currentStreak,
+          },
+          $push: {
+            achievements: {
+              $each: studentNewAchievements,
+            },
+          },
+        }
+      );
+
+      // 4. Update Examiner's Stats
+      const examinerEmail = req.body.examinerEmail;
+      let examinerStats = await userStatsCollection.findOne({
+        userEmail: examinerEmail,
+      });
+
+      // Create examiner stats if they don't exist
+      if (!examinerStats) {
+        examinerStats = {
+          userEmail: examinerEmail,
+          userName: req.body.examinerName,
+          points: 0,
+          assignmentsCompleted: 0,
+          assignmentsGraded: 0,
+          perfectScores: 0,
+          currentStreak: 0,
+          lastActivityDate: new Date(),
+          achievements: [],
+          monthlyPoints: 0,
+          rank: "Novice",
+        };
+        await userStatsCollection.insertOne(examinerStats);
+      }
+
+      // Calculate examiner points
+      let examinerPointsEarned = POINTS.GRADE_ASSIGNMENT;
+      let examinerNewAchievements = [];
+
+      // Check for grading master achievement
+      if (examinerStats.assignmentsGraded + 1 === 10) {
+        examinerNewAchievements.push(ACHIEVEMENTS.GRADING_MASTER);
+        examinerPointsEarned += ACHIEVEMENTS.GRADING_MASTER.points;
+      }
+
+      // Update examiner stats
+      await userStatsCollection.updateOne(
+        { userEmail: examinerEmail },
+        {
+          $inc: {
+            points: examinerPointsEarned,
+            monthlyPoints: examinerPointsEarned,
+            assignmentsGraded: 1,
+          },
+          $set: {
+            lastActivityDate: new Date(),
+          },
+          $push: {
+            achievements: {
+              $each: examinerNewAchievements,
+            },
+          },
+        }
+      );
+
+      // 5. Get updated rankings for both users
+      const leaderboard = await userStatsCollection
+        .find({})
+        .sort({ points: -1 })
+        .toArray();
+
+      const studentRank =
+        leaderboard.findIndex((user) => user.userEmail === studentEmail) + 1;
+      const examinerRank =
+        leaderboard.findIndex((user) => user.userEmail === examinerEmail) + 1;
+
+      // 6. Send response with all updates
+      res.json({
+        submission: submissionResult,
+        student: {
+          pointsEarned: studentPointsEarned,
+          newAchievements: studentNewAchievements,
+          currentStreak: studentStreak?.newStreak || studentStats.currentStreak,
+          rank: studentRank,
+        },
+        examiner: {
+          pointsEarned: examinerPointsEarned,
+          newAchievements: examinerNewAchievements,
+          rank: examinerRank,
+        },
+      });
+    });
+
+    app.post("/initializeStats", verifyToken, async (req, res) => {
+      const { email, name } = req.body;
+
+      const stats = {
+        userEmail: email,
+        userName: name,
+        points: 0,
+        assignmentsCompleted: 0,
+        assignmentsGraded: 0,
+        perfectScores: 0,
+        currentStreak: 0,
+        lastActivityDate: new Date(),
+        achievements: [],
+        monthlyPoints: 0,
+        lastMonthReset: new Date(),
+        rank: "Novice",
+      };
+
+      const result = await userStatsCollection.insertOne(stats);
+      res.json(result);
+    });
+
+    // Update points and achievements when grading assignments
+    app.put("/updateGraderStats", verifyToken, async (req, res) => {
+      const { examinerEmail } = req.body;
+
+      const stats = await userStatsCollection.findOne({
+        userEmail: examinerEmail,
+      });
+      if (!stats) return res.status(404).json({ message: "Stats not found" });
+
+      let pointsEarned = POINTS.GRADE_ASSIGNMENT;
+      let newAchievements = [];
+
+      // Check for grading master achievement
+      if (stats.assignmentsGraded + 1 === 10) {
+        newAchievements.push(ACHIEVEMENTS.GRADING_MASTER);
+        pointsEarned += ACHIEVEMENTS.GRADING_MASTER.points;
+      }
+
+      const result = await userStatsCollection.updateOne(
+        { userEmail: examinerEmail },
+        {
+          $inc: {
+            points: pointsEarned,
+            monthlyPoints: pointsEarned,
+            assignmentsGraded: 1,
+          },
+          $push: {
+            achievements: { $each: newAchievements },
+          },
+        }
+      );
+
+      res.json({ result, pointsEarned, newAchievements });
+    });
+
+    // Get monthly leaderboard
+    app.get("/monthlyLeaderboard", async (req, res) => {
+      const result = await userStatsCollection
+        .find({})
+        .sort({ monthlyPoints: -1 })
+        .limit(10)
+        .toArray();
+      res.json(result);
+    });
+
+    // Reset monthly points (should be called via cron job at month end)
+    app.post("/resetMonthlyPoints", async (req, res) => {
+      // Get top 3 before reset
+      const topThree = await userStatsCollection
+        .find({})
+        .sort({ monthlyPoints: -1 })
+        .limit(3)
+        .toArray();
+
+      // Award bonus points to top 3
+      for (let i = 0; i < topThree.length; i++) {
+        await userStatsCollection.updateOne(
+          { userEmail: topThree[i].userEmail },
+          {
+            $inc: { points: POINTS.MONTHLY_TOP_THREE[i] },
+            $push: {
+              achievements: i === 0 ? ACHIEVEMENTS.TOP_PERFORMER : null,
+            },
+          }
+        );
+      }
+
+      // Reset monthly points for all users
+      await userStatsCollection.updateMany(
+        {},
+        {
+          $set: {
+            monthlyPoints: 0,
+            lastMonthReset: new Date(),
+          },
+        }
+      );
+
+      res.json({ message: "Monthly points reset successful" });
+    });
+
+    // Update streak and check for streak-based achievements
+    const updateStreak = async (userEmail) => {
+      const stats = await userStatsCollection.findOne({ userEmail });
+      if (!stats) return null;
+
+      const lastActivity = new Date(stats.lastActivityDate);
+      const today = new Date();
+      const daysDiff = Math.floor(
+        (today - lastActivity) / (1000 * 60 * 60 * 24)
+      );
+
+      let newStreak = daysDiff === 1 ? stats.currentStreak + 1 : 1;
+      let newAchievements = [];
+      let bonusPoints = 0;
+
+      // Check for streak achievements
+      if (newStreak === 7) {
+        newAchievements.push(ACHIEVEMENTS.PERFECT_STREAK);
+        bonusPoints += ACHIEVEMENTS.PERFECT_STREAK.points;
+      }
+
+      await userStatsCollection.updateOne(
+        { userEmail },
+        {
+          $set: {
+            currentStreak: newStreak,
+            lastActivityDate: today,
+          },
+          $push: {
+            achievements: { $each: newAchievements },
+          },
+          $inc: {
+            points: bonusPoints,
+            monthlyPoints: bonusPoints,
+          },
+        }
+      );
+
+      return { newStreak, newAchievements, bonusPoints };
+    };
+    // Get leaderboard
+    app.get("/leaderboard", async (req, res) => {
+      const result = await userStatsCollection
+        .find({})
+        .sort({ points: -1 })
+        .limit(10)
+        .toArray();
+      res.json(result);
+    });
+
+    // Get user stats
+    app.get("/userStats/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      const result = await userStatsCollection.findOne({ userEmail: email });
       res.json(result);
     });
 
