@@ -16,7 +16,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://studycolab.netlify.app",
-      "https://studycollab-64f2a.web.app/",
+      "https://studycollab-64f2a.web.app",
     ], //replace with client address
     credentials: true,
     optionsSuccessStatus: 200,
